@@ -3,15 +3,14 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
+#include "parser.h"
 #include "lexer.h"
 
-int iTk;	// the iterator in tokens
-Token* consumed;	// the last consumed token
-extern Token tokens[];
-
-// same as err, but also prints the line of the current token
-_Noreturn void tkerr(const char* fmt, ...) {
-    fprintf(stderr, "error in line %d: ", tokens[iTk].line - 1);
+int iTk;                                                                                             // iterator în tokens
+Token* consumed;
+bool isFunctionContext = false;
+_Noreturn; void tkerr(const char* fmt, ...) {
+    fprintf(stderr, "Eroare la linia %d: ", tokens[iTk].line);
     va_list va;
     va_start(va, fmt);
     vfprintf(stderr, fmt, va);
@@ -21,350 +20,18 @@ _Noreturn void tkerr(const char* fmt, ...) {
 }
 
 bool consume(int code) {
-    printf("consume(%s)", getTokenName(code));
+    printf("consume(%s)", tkCodeName(code));
     if (tokens[iTk].code == code) {
-        consumed = &tokens[iTk++];
-        printf(" => consumed: %s\n", getTokenName(consumed->code));
+        consumed = &tokens[iTk++];                                                                  //consumed reține un pointer către ultimul token consumat.
+        printf(" => consumed\n");
         return true;
     }
-    printf(" => found %s\n", getTokenName(tokens[iTk].code));
+    printf(" => found %s\n", tkCodeName(tokens[iTk].code));
     return false;
 }
-
-bool program();
-bool defVar();
-bool defFunc();
-bool funcParam();
-bool funcParams();
-bool baseType();
-bool block();
-bool instr();
-bool expr();
-bool exprLogic();
-bool exprAssign();
-bool exprComp();
-bool exprAdd();
-bool exprMul();
-bool exprPrefix();
-bool factor();
-
-bool factor() {
-    printf("factor() called at token index %d\n", iTk);
-    int start = iTk;
-
-    if (consume(INT) || consume(REAL) || consume(STR)) {
-        return true;
-    }
-
-    if (consume(LPAR)) {
-        if (expr()) {
-            if (consume(RPAR)) {
-                return true;
-            }
-            tkerr("Eroare de sintaxa: Lipseste ')' pentru a inchide expresia");
-        }
-        tkerr("Eroare de sintaxa: Expresie invalida dupa '('");
-    }
-
-    if (consume(ID)) {
-        if (consume(LPAR)) {
-            if (!expr()) {
-                if (!consume(RPAR)) {
-                    tkerr("Eroare de sintaxa: se asteapta o expresie sau ')'");
-                }
-            }
-            else {
-                while (consume(COMMA)) {
-                    if (!expr()) {
-                        tkerr("Eroare de sintaxa: se asteapta o expresie dupa ','");
-                    }
-                }
-                if (!consume(RPAR)) {
-                    tkerr("Eroare de sintaxa: lipseste ')' dupa lista de argumente");
-                }
-            }
-            return true;
-        }
-        return true;
-    }
-
-    iTk = start;
-    return false;
-}
-
-bool exprPrefix() {
-    printf("exprPrefix() called at token index %d\n", iTk);
-    int start = iTk;
-    while (consume(SUB) || consume(NOT));
-    if (factor()) {
-        return true;
-    }
-    iTk = start;
-    return false;
-}
-
-bool exprMul() {
-    printf("exprMul() called at token index %d\n", iTk);
-    int start = iTk;
-    if (exprPrefix()) {
-        while (consume(MUL) || consume(DIV)) {
-            if (!exprPrefix()) {
-                tkerr("Operand lipsa dupa operatorul '*' sau '/'");
-            }
-        }
-        return true;
-    }
-    iTk = start;
-    return false;
-}
-
-bool exprAdd() {
-    printf("exprAdd() called at token index %d\n", iTk);
-    int start = iTk;
-    if (exprMul()) {
-        while (consume(ADD) || consume(SUB)) {
-            if (!exprMul()) {
-                tkerr("Eroare de sintaxa: Operand lipsa dupa operatorul '+' sau '-'");
-            }
-        }
-        return true;
-    }
-    iTk = start;
-    return false;
-}
-
-bool exprComp() {
-    printf("exprComp() called at token index %d\n", iTk);
-    int start = iTk;
-    if (exprAdd()) {
-        if (consume(LESS) || consume(LESS_EQUAL) || consume(EQUAL) || consume(GREATER) || consume(GREATER_EQUAL) || consume(NEQUAL)) {
-            if (!exprAdd()) {
-                tkerr("Eroare de sintaxa: Operand lipsa dupa operatorul de comparatie");
-            }
-        }
-        return true;
-    }
-    iTk = start;
-    return false;
-}
-
-bool exprAssign() {
-    printf("exprAssign() called at token index %d\n", iTk);
-    int start = iTk;
-    if (consume(ID)) {
-        if (consume(ASSIGN)) {
-            if (exprComp()) {
-                return true;
-            }
-            tkerr("Eroare de sintaxa: Expresie lipsa dupa operatorul '='");
-        }
-        iTk = start;
-    }
-    return exprComp();
-}
-
-bool exprLogic() {
-    printf("exprLogic() called at token index %d\n", iTk);
-    int start = iTk;
-    if (exprAssign()) {
-        while (consume(AND) || consume(OR)) {
-            if (!exprAssign()) {
-                tkerr("Eroare de sintaxa: Expresie invalida dupa operatorul logic '&&' sau '||'");
-            }
-        }
-        return true;
-    }
-    iTk = start;
-    return false;
-}
-
-bool expr() {
-    printf("expr() called at token index %d\n", iTk);
-    return exprLogic();
-}
-
-bool instr() {
-    printf("instr() called at token index %d\n", iTk);
-    int start = iTk;
-
-    if (consume(IF)) {
-        if (consume(LPAR)) {
-            if (expr()) {
-                if (consume(RPAR)) {
-                    if (block()) {
-                        if (consume(ELSE)) {
-                            if (!block()) {
-                                tkerr("Lipseste bloc dupa ELSE");
-                            }
-                        }
-                        if (consume(END)) {
-                            return true;
-                        }
-                        tkerr("Eroare de sintaxa: lipseste END dupa blocul IF");
-                    }
-                    tkerr("Eroare de sintaxa: lipseste bloc fupa IF");
-                }
-                tkerr("Eroare de sintaxa: lipseste ')' dupa conditia din IF");
-            }
-            tkerr("Eroare: lipseste expresie in conditia IF");
-        }
-        tkerr("Eroare de sintaxa: lipseste '(' dupa IF");
-    }
-
-    iTk = start;
-    if (consume(RETURN)) {
-        if (expr()) {
-            if (consume(SEMICOLON)) {
-                return true;
-            }
-            tkerr("Eroare de sintaxa: Lipseste ';' dupa return");
-        }
-        tkerr("Eroare: Expresie lipsa dupa return");
-    }
-
-    iTk = start;
-    if (consume(WHILE)) {
-        if (consume(LPAR)) {
-            if (expr()) {
-                if (consume(RPAR)) {
-                    if (block()) {
-                        if (consume(END)) {
-                            return true;
-                        }
-                        tkerr("Eroare de sintaxa: Lipseste END dupa blocul WHILE");
-                    }
-                    tkerr("Eroare de sintaxa: Bloc lipsa dupa WHILE");
-                }
-                tkerr("Eroare de sintaxa: Lipseste ')' dupa expresia din WHILE");
-            }
-            tkerr("Eroare de sintaxa: Expresie lipsa in conditia WHILE");
-        }
-        tkerr("Eroare de sintaxa: Lipseste '(' dupa WHILE");
-    }
-    iTk = start;
-    if (expr()) {
-        if (consume(SEMICOLON)) {
-            return true;
-        }
-        tkerr("Eroare de sintaxa: lipseste ';' dupa expresie");
-    }
-
-    iTk = start;
-    return false;
-}
-
-bool block() {
-    printf("block() called at token index %d\n", iTk);
-    int start = iTk;
-    if (instr()) {
-        while (instr());
-        return true;
-    }
-    iTk = start;
-    return false;
-}
-
-bool defFunc() {
-    printf("defFunc() called at token index %d\n", iTk);
-    int start = iTk;
-    if (consume(FUNCTION)) {
-        if (consume(ID)) {
-            if (consume(LPAR)) {
-                funcParams();
-                if (consume(RPAR)) {
-                    if (consume(COLON)) {
-                        if (baseType()) {
-                            while (defVar());
-                            if (block()) {
-                                if (consume(END)) {
-                                    return true;
-                                }
-                                tkerr("Eroare de sintaxa: Lipseste END dupa definitia functiei");
-                            }
-                            tkerr("Eroare de sintaxa: Bloc lipsa in definirea functiei");
-                        }
-                        tkerr("Eroare de sintaxa: Tip lipsa in definirea functiei");
-                    }
-                    tkerr("Eroare de sintaxa: Lipseste ':' dupa parametrii functiei");
-                }
-                tkerr("Eroare de sintaxa: Lipseste ')' dupa lista de parametrii");
-            }
-            tkerr("Eroare de sintaxa: Lipseste '(' dupa identificatorul functiei");
-        }
-        tkerr("Eroare de sintaxa: Identificator lipsa pentru functie");
-    }
-    iTk = start;
-    return false;
-}
-
-bool funcParam() {
-    printf("funcParam() called at token index %d\n", iTk);
-    int start = iTk;
-    if (consume(ID)) {
-        if (consume(COLON)) {
-            if (baseType()) {
-                return true;
-            }
-            tkerr("Eroare de sintaxa: Lipseste tipul de baza pentru parametrul functiei");
-        }
-        tkerr("Eroare de sintaxa: Lipseste ':' dupa identificatorul parametrului");
-    }
-    iTk = start;
-    return false;
-}
-
-bool funcParams() {
-    printf("funcParams() called at token index %d\n", iTk);
-    int start = iTk;
-    if (funcParam()) {
-        while (consume(COMMA)) {
-            if (!funcParam()) {
-                tkerr("Eroare de sintaxa: Parametru lipsa dupa virgula in lista de parametrii");
-            }
-        }
-        return true;
-    }
-    iTk = start;
-    return false;
-}
-
-bool baseType() {
-    printf("baseType() called at token index %d\n", iTk);
-    int start = iTk;
-    if (consume(TYPE_INT) || consume(TYPE_REAL) || consume(TYPE_STR)) {
-        return true;
-    }
-    iTk = start;
-    tkerr("Eroare de sintaxa: Tip de baza invalid, asteptat: int, real sau str");
-    return false;
-}
-
-bool defVar() {
-    printf("defVar() called at token index %d\n", iTk);
-    int start = iTk;
-    if (consume(VAR)) {
-        if (consume(ID)) {
-            if (consume(COLON)) {
-                if (baseType()) {
-                    if (consume(SEMICOLON)) {
-                        return true;
-                    }
-                    tkerr("Eroare de sintaxa: Lipseste ';' dupa definitia variabilei");
-                }
-                tkerr("Eroare de sintaxa: Lipseste tip de baza pentru variabila");
-            }
-            tkerr("Eroare de sintaxa: Lipseste ':' dupa identificatorul variabilei");
-        }
-        tkerr("Eroare de sintaxa: Identificator lipsa al variabilei");
-    }
-    iTk = start;
-    return false;
-}
-
 
 // program ::= ( defVar | defFunc | block )* FINISH
 bool program() {
-    int start = iTk;
     for (;;) {
         if (defVar()) {}
         else if (defFunc()) {}
@@ -375,15 +42,361 @@ bool program() {
         return true;
     }
     else {
-        iTk = start;
-        tkerr("syntax error: Program incomplet sau incorect");
+        tkerr("Eroare de sintaxa, lipseste 'FINISH'");
     }
     return false;
 }
 
-void parse() {
-    iTk = 0;
-    if (!program()) {
-        tkerr("Parser failed");
+// defVar ::= VAR ID COLON baseType SEMICOLON
+bool defVar() {
+    int start = iTk;
+    if (consume(VAR)) {
+        if (consume(ID)) {
+            if (consume(COLON)) {
+                if (baseType()) {
+                    if (consume(SEMICOLON)) {
+                        return true;
+                    }
+                    else {
+                        tkerr("Lipseste ';' la sfarsitul declaratiei de variabila");
+                    }
+                }
+            }
+            else {
+                tkerr("Lipseste ':' dupa identificatorul variabilei");
+            }
+        }
+        else {
+            tkerr("Lipseste identificatorul dupa 'VAR'");
+        }
     }
+    iTk = start;
+    return false;
+}
+
+// defFunc ::= FUNCTION ID LPAR funcParams? RPAR COLON baseType defVar* block END
+bool defFunc() {
+    int start = iTk;
+    if (consume(FUNCTION)) {
+        if (consume(ID)) {
+            if (consume(LPAR)) {
+
+                if (funcParams()) {}
+
+                if (consume(RPAR)) {
+
+                    if (consume(COLON)) {
+
+                        isFunctionContext = true;
+                        if (baseType()) {
+
+                            while (defVar()) {}
+                            if (block()) {
+                                if (consume(END)) {
+                                    return true;
+                                }
+                                else {
+                                    tkerr("Lipseste 'END' la sfarsitul functiei");
+                                }
+                            }
+                        }
+                        else {
+
+                            tkerr("Lipseste tipul functiei");
+                        }
+                    }
+                    else {
+                        tkerr("Lipseste ':' dupa parametrii functiei");
+                    }
+                }
+                else {
+                    tkerr("Lipseste ')' dupa parametrii functiei");
+                }
+            }
+            else {
+                tkerr("Lipseste '(' dupa 'FUNCTION'");
+            }
+        }
+        else {
+            tkerr("Lipseste identificatorul dupa 'FUNCTION'");
+        }
+    }
+    iTk = start;
+    return false;
+}
+
+
+// block ::= instr+
+bool block() {
+    int start = iTk;
+    if (instr()) {
+        while (instr()) {}
+        return true;
+    }
+    iTk = start;
+    return false;
+}
+
+// baseType ::= TYPE_INT | TYPE_REAL | TYPE_STR
+bool baseType() {
+    if (consume(TYPE_INT)) return true;
+    if (consume(TYPE_REAL)) return true;
+    if (consume(TYPE_STR)) return true;
+
+    if (isFunctionContext) {
+        tkerr("Lipseste tipul functiei");
+    }
+    else {
+        tkerr("Lipseste tipul parametrului");
+    }
+    return false;
+}
+
+
+// funcParams ::= funcParam ( COMMA funcParam )*
+bool funcParams() {
+
+    if (!funcParam()) {
+        return false;
+    }
+
+    while (consume(COMMA)) {
+        if (consume(COMMA)) {
+            tkerr("Lipseste parametru dupa ','");
+            return false;
+        }
+
+        if (!funcParam()) {
+            tkerr("Lipseste parametru dupa ','");
+            return false;
+        }
+    }
+
+    return true;
+}
+bool funcParam() {
+    int start = iTk;
+    if (consume(ID)) {
+        if (consume(COLON)) {
+            if (baseType()) {
+                return true;
+            }
+            else {
+                tkerr("Lipseste tipul parametrului");
+            }
+        }
+        else {
+            tkerr("Lipseste ':' dupa identificatorul parametrului");
+        }
+    }
+    else {
+        tkerr("Lipseste identificatorul parametrului inainte/dupa virgula");
+    }
+    iTk = start;
+    return false;
+}
+// instr ::= expr? SEMICOLON
+//           | IF LPAR expr RPAR block ( ELSE block )? END
+//           | RETURN expr SEMICOLON
+//           | WHILE LPAR expr RPAR block END
+bool instr() {
+    int start = iTk;
+    if (expr()) {
+        if (consume(SEMICOLON)) return true;
+        else tkerr("Lipseste ';' dupa expresie");
+    }
+    else if (consume(IF)) {
+        if (consume(LPAR)) {
+            if (expr()) {
+                if (consume(RPAR)) {
+                    if (block()) {
+                        if (consume(ELSE)) {
+                            if (!block()) {
+                                tkerr("Lipseste blocul dupa 'else'"); // Aici am adaugat mesajul de eroare pentru block lipsa dupa else
+                                iTk = start;
+                                return false;
+                            }
+                        }
+                        if (consume(END)) return true;
+                        else tkerr("Lipseste 'END' la sfarsitul blocului 'if'");
+                    }
+                }
+                else tkerr("Lipseste ')' dupa conditia 'if'");
+            }
+            else tkerr("Conditie invalida pentru 'if'");
+        }
+        else tkerr("Lipseste '(' dupa 'if'");
+    }
+    else if (consume(RETURN)) {
+        if (expr()) {
+            if (consume(SEMICOLON)) return true;
+            else tkerr("Lipseste ';' dupa expresia 'RETURN'");
+        }
+        else tkerr("Expresie invalida dupa 'RETURN'");
+    }
+    else if (consume(WHILE)) {
+        if (consume(LPAR)) {
+            if (expr()) {
+                if (consume(RPAR)) {
+                    if (block()) {
+                        if (consume(END)) return true;
+                        else tkerr("Lipseste 'END' la sfarsitul blocului 'while'");
+                    }
+                }
+                else tkerr("Lipseste ')' dupa conditia 'while'");
+            }
+            else tkerr("Conditie invalida pentru 'while'");
+        }
+        else tkerr("Lipseste '(' dupa 'while'");
+    }
+    iTk = start;
+    return false;
+}
+
+// expr ::= exprLogic
+bool expr() {
+    return exprLogic();
+}
+
+// exprLogic ::= exprAssign ( ( AND | OR ) exprAssign )*
+bool exprLogic() {
+    int start = iTk;
+    if (exprAssign()) {
+        while (consume(AND) || consume(OR)) {
+            if (!exprAssign()) {
+                tkerr("Expresie invalida dupa operatorul logic");
+                iTk = start;
+                return false;
+            }
+        }
+        return true;
+    }
+    iTk = start;
+    return false;
+}
+
+// exprAssign ::= ( ID ASSIGN )? exprComp
+bool exprAssign() {
+    int start = iTk;
+    if (consume(ID)) {
+        if (consume(ASSIGN)) {
+            if (exprComp()) return true;
+            tkerr("Expresie invalida dupa '='");
+            iTk = start;
+            return false;
+        }
+    }
+    iTk = start;
+    return exprComp();
+}
+// exprComp ::= exprAdd ( ( LESS | EQUAL ) exprAdd )?
+bool exprComp() {
+    int start = iTk;
+    if (exprAdd()) {
+        if (consume(LESS) || consume(EQUAL)) {
+            if (!exprAdd()) {
+                if (tokens[iTk - 1].code == LESS) {
+                    tkerr("Lipseste operand dupa operatorul LESS");
+                }
+                else if (tokens[iTk - 1].code == EQUAL) {
+                    tkerr("Lipseste operand dupa operatorul EQUAL");
+                }
+                iTk = start;
+                return false;
+            }
+            return true;
+        }
+        else {
+            if (tokens[iTk].code == ID || tokens[iTk].code == INT || tokens[iTk].code == REAL || tokens[iTk].code == STR || tokens[iTk].code == LPAR) {
+                tkerr("Lipseste operatorul de comparatie intre operandi");
+            }
+        }
+        return true;
+    }
+    iTk = start;
+    return false;
+}
+
+
+// exprAdd ::= exprMul ( ( ADD | SUB ) exprMul )*
+bool exprAdd() {
+    int start = iTk;
+    if (exprMul()) {
+        while (consume(ADD) || consume(SUB)) {
+            if (!exprMul()) {
+                tkerr("Expresie invalida dupa operatorul de adunare/scadere");
+                iTk = start;
+                return false;
+            }
+        }
+        return true;
+    }
+    iTk = start;
+    return false;
+}
+
+// exprMul ::= exprPrefix ( ( MUL | DIV ) exprPrefix )*
+bool exprMul() {
+    int start = iTk;
+    if (exprPrefix()) {
+        while (consume(MUL) || consume(DIV)) {
+            if (!exprPrefix()) {
+                tkerr("Expresie invalida dupa operatorul de inmultire/impartire");
+                iTk = start;
+                return false;
+            }
+        }
+        return true;
+    }
+    iTk = start;
+    return false;
+}
+
+// exprPrefix ::= ( SUB | NOT )? factor
+bool exprPrefix() {
+    if (consume(SUB) || consume(NOT)) {
+        if (!factor()) {
+            tkerr("Factor invalid dupa operatorul de prefix");
+            return false;
+        }
+        return true;
+    }
+    return factor();
+}
+
+// factor ::= INT | REAL | STR | LPAR expr RPAR | ID ( LPAR ( expr ( COMMA expr )* )? RPAR )?
+bool factor() {
+    int start = iTk;
+    if (consume(INT) || consume(REAL) || consume(STR)) return true;
+
+    if (consume(LPAR)) {
+        if (expr()) {
+            if (consume(RPAR)) return true;
+            tkerr("Lipseste ')' dupa expresie");
+        }
+        else tkerr("Expresie invalida intre paranteze");
+    }
+    else if (consume(ID)) {
+        if (consume(LPAR)) {
+            if (expr()) {
+                while (consume(COMMA)) {
+                    if (!expr()) {
+                        tkerr("Expresie invalida după ',' în apelul functiei");
+                        iTk = start;
+                        return false;
+                    }
+                }
+            }
+            if (consume(RPAR)) return true;
+            tkerr("Lipseste ')' la sfarsitul apelului de functie");
+        }
+        return true;
+    }
+    iTk = start;
+    return false;
+}
+
+void parse() {                                                                                                   //initializeaza proecsul de parsare
+    iTk = 0;
+    program();
 }

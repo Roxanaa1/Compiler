@@ -13,10 +13,5 @@ int main()
 	parse(); 
 	free(inbuf); 
 	return 0;
-	//trebuie sa adaug apelul lui parse 
-	//trebuie sa adaug parse.c si parse.h
-	//avem reguli de testare :
-	// la inceputul fiecare functii ar trebui put 
-	//modificarea functiei consume a.i. sa vedem ce am consumat 
-	//avem in laborator functia consume care ne ajuta pentru depanare 
+	
 }
