@@ -161,10 +161,8 @@ bool funcParams() {
     }
 
     while (consume(COMMA)) {
-        if (consume(COMMA)) {
-            tkerr("Lipseste parametru dupa ','");
-            return false;
-        }
+        tkerr("Lipseste parametru dupa ','");
+        return false;
 
         if (!funcParam()) {
             tkerr("Lipseste parametru dupa ','");
@@ -184,13 +182,13 @@ bool funcParam() {
             else {
                 tkerr("Lipseste tipul parametrului");
             }
+            if (consume(COMMA)) {
+                tkerr("Lipseste identificatorul parametrului dupa virgula");
+            }
         }
         else {
             tkerr("Lipseste ':' dupa identificatorul parametrului");
         }
-    }
-    else {
-        tkerr("Lipseste identificatorul parametrului inainte/dupa virgula");
     }
     iTk = start;
     return false;
