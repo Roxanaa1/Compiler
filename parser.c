@@ -154,26 +154,7 @@ bool baseType() {
 
 
 // funcParams ::= funcParam ( COMMA funcParam )*
-bool funcParams() {
-
-    if (!funcParam()) {
-        return false;
-    }
-
-    while (consume(COMMA)) {
-        tkerr("Lipseste parametru dupa ','");
-        return false;
-
-        if (!funcParam()) {
-            tkerr("Lipseste parametru dupa ','");
-            return false;
-        }
-    }
-
-    return true;
-}
 bool funcParam() {
-    int start = iTk;
     if (consume(ID)) {
         if (consume(COLON)) {
             if (baseType()) {
@@ -182,17 +163,27 @@ bool funcParam() {
             else {
                 tkerr("Lipseste tipul parametrului");
             }
-            if (consume(COMMA)) {
-                tkerr("Lipseste identificatorul parametrului dupa virgula");
-            }
         }
         else {
             tkerr("Lipseste ':' dupa identificatorul parametrului");
         }
     }
-    iTk = start;
     return false;
 }
+
+bool funcParams() {
+    if (!funcParam()) {
+        return false;
+    }
+    while (consume(COMMA)) {
+        if (!funcParam()) {
+            tkerr("Lipseste parametru dupa ','");
+            return false;
+        }
+    }
+    return true;
+}
+
 // instr ::= expr? SEMICOLON
 //           | IF LPAR expr RPAR block ( ELSE block )? END
 //           | RETURN expr SEMICOLON
